@@ -1,19 +1,20 @@
 networks:
   pulsar:
     driver: bridge
+
 services:
   # Start zookeeper
   zookeeper:
     image: apachepulsar/pulsar:latest
     container_name: zookeeper
-    restart: on-failure
+    restart: unless-stopped
     networks:
       - pulsar
     volumes:
       - ./data/zookeeper:/pulsar/data/zookeeper
     environment:
       - metadataStoreUrl=zk:zookeeper:2181
-      - PULSAR_MEM=-Xms256m -Xmx256m -XX:MaxDirectMemorySize=256m
+      - PULSAR_MEM=-Xms512m -Xmx512m -XX:MaxDirectMemorySize=256m
     command:
       - bash
       - -c
@@ -30,6 +31,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
 
   # Init cluster metadata
   pulsar-init:
@@ -56,7 +62,7 @@ services:
   bookie:
     image: apachepulsar/pulsar:latest
     container_name: bookie
-    restart: on-failure
+    restart: unless-stopped
     networks:
       - pulsar
     environment:
@@ -64,7 +70,7 @@ services:
       - zkServers=zookeeper:2181
       - metadataServiceUri=metadata-store:zk:zookeeper:2181
       - advertisedAddress=bookie
-      - BOOKIE_MEM=-Xms512m -Xmx512m -XX:MaxDirectMemorySize=256m
+      - BOOKIE_MEM=-Xms1g -Xmx1g -XX:MaxDirectMemorySize=512m
     depends_on:
       zookeeper:
         condition: service_healthy
@@ -81,13 +87,18 @@ services:
         chown -R pulsar:pulsar /pulsar/data/bookkeeper || true
         chmod -R 755 /pulsar/data/bookkeeper || true
         bin/apply-config-from-env.py conf/bookkeeper.conf && exec bin/pulsar bookie
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
 
   # Start broker
   broker:
     image: apachepulsar/pulsar:latest
     container_name: broker
     hostname: broker
-    restart: on-failure
+    restart: unless-stopped
     networks:
       - pulsar
     environment:
@@ -99,7 +110,7 @@ services:
       - managedLedgerDefaultAckQuorum=1
       - advertisedAddress=${PULSAR_BROKER_IP}
       - advertisedListeners=external:pulsar://${PULSAR_BROKER_IP}:6650
-      - PULSAR_MEM=-Xms512m -Xmx512m -XX:MaxDirectMemorySize=256m
+      - PULSAR_MEM=-Xms1g -Xmx1g -XX:MaxDirectMemorySize=512m
     depends_on:
       zookeeper:
         condition: service_healthy
@@ -109,18 +120,28 @@ services:
       - "6650:6650"
       - "8080:8080"
     command: bash -c "bin/apply-config-from-env.py conf/broker.conf && exec bin/pulsar broker"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
 
   pulsar-manager:
     image: apachepulsar/pulsar-manager:v0.3.0
     container_name: pulsar-manager
-    restart: on-failure
+    restart: unless-stopped
     networks:
       - pulsar
     environment:
       SPRING_CONFIGURATION_FILE: /pulsar-manager/pulsar-manager/application.properties
-      PULSAR_MANAGER_USER: "pulsar"
-      PULSAR_MANAGER_PASSWORD: "pulsar"
+      PULSAR_MANAGER_USER: "admin"
+      PULSAR_MANAGER_PASSWORD: "${PULSAR_MANAGER_PASSWORD:-admin123}"
     ports:
       - "9527:9527"
     depends_on:
       - broker
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
