@@ -97,8 +97,8 @@ services:
       - managedLedgerDefaultEnsembleSize=1
       - managedLedgerDefaultWriteQuorum=1
       - managedLedgerDefaultAckQuorum=1
-      - advertisedAddress=broker
-      - advertisedListeners=external:pulsar://broker:6650
+      - advertisedAddress=${PULSAR_BROKER_IP}
+      - advertisedListeners=external:pulsar://${PULSAR_BROKER_IP}:6650
       - PULSAR_MEM=-Xms512m -Xmx512m -XX:MaxDirectMemorySize=256m
     depends_on:
       zookeeper:

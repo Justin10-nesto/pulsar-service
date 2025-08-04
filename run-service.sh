@@ -6,6 +6,24 @@ echo "=== Apache Pulsar Service Startup Script ==="
 echo "Current directory: $(pwd)"
 echo "Date: $(date)"
 echo ""
+# Get host IP address dynamically
+get_host_ip() {
+    ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+    if [ -z "$ip" ]; then
+        ip=$(ip addr show | grep 'inet ' | grep -v '127.0.0.1' | awk '{print $2}' | cut -d'/' -f1 | head -n1)
+    fi
+    if [ -z "$ip" ]; then
+        ip=$(ipconfig 2>/dev/null | grep -E 'IPv4|IP Address' | grep -v '127.0.0.1' | awk -F: '{print $2}' | awk '{print $1}' | head -n1)
+    fi
+    echo "$ip"
+}
+
+HOST_IP=$(get_host_ip)
+echo "Detected host IP: $HOST_IP"
+
+# Update/create .env file
+echo "PULSAR_BROKER_IP=$HOST_IP" > .env
+echo "✓ Updated .env with broker IP"
 
 # Function to create directory if it doesn't exist
 create_directory() {
@@ -75,7 +93,11 @@ if ! docker compose version >/dev/null 2>&1; then
 else
     DOCKER_COMPOSE_CMD="docker compose"
 fi
+
 echo "✓ Docker Compose is available"
+
+# Export env file for docker compose
+export $(grep -v '^#' .env | xargs)
 
 echo ""
 echo "3. Cleaning up any existing containers..."
@@ -142,10 +164,10 @@ $DOCKER_COMPOSE_CMD ps
 echo ""
 echo "8. Service URLs:"
 echo "===================="
-echo "Pulsar Broker:          http://localhost:8080"
-echo "Pulsar Admin REST API:  http://localhost:8080/admin/v2"
-echo "Pulsar Manager:         http://localhost:9527"
-echo "Pulsar Service URL:     pulsar://localhost:6650"
+echo "Pulsar Broker:          http://$HOST_IP:8080"
+echo "Pulsar Admin REST API:  http://$HOST_IP:8080/admin/v2"
+echo "Pulsar Manager:         http://$HOST_IP:9527"
+echo "Pulsar Service URL:     pulsar://$HOST_IP:6650"
 echo ""
 echo "Default Pulsar Manager credentials:"
 echo "Username: pulsar"
