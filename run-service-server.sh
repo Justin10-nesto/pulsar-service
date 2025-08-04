@@ -2,55 +2,61 @@
 
 set -e  # Exit on any error
 
-echo "=== Apache Pulsar Service Startup Script ==="
+echo "=== Apache Pulsar Service Startup Script (Server Version) ==="
 echo "Current directory: $(pwd)"
 echo "Date: $(date)"
+echo "User: $(whoami)"
+echo "UID: $(id -u), GID: $(id -g)"
 echo ""
 
 # Function to create directory if it doesn't exist
 create_directory() {
     local dir_path="$1"
-    if [ ! -d "$dir_path" ]; then
-        echo "Creating directory: $dir_path"
-        mkdir -p "$dir_path"
-        echo "✓ Directory created: $dir_path"
-    else
-        echo "✓ Directory already exists: $dir_path"
+    
+    echo "Setting up directory: $dir_path"
+    
+    # Remove existing directory if it has permission issues
+    if [ -d "$dir_path" ] && [ ! -w "$dir_path" ]; then
+        echo "Directory exists but is not writable, attempting to fix permissions..."
+        sudo rm -rf "$dir_path" 2>/dev/null || rm -rf "$dir_path" 2>/dev/null || true
     fi
     
-    # Create specific subdirectories for ZooKeeper and BookKeeper
+    # Create directory structure
+    mkdir -p "$dir_path"
+    
+    # Create specific subdirectories
     if [[ "$dir_path" == *"zookeeper"* ]]; then
         mkdir -p "$dir_path/version-2"
         echo "✓ Created ZooKeeper version-2 subdirectory"
     fi
     
-    # Set proper permissions (this will work on Linux/macOS, harmless on Windows)
-    if command -v chmod >/dev/null 2>&1; then
-        chmod -R 755 "$dir_path" 2>/dev/null || {
-            echo "Warning: Could not set permissions for $dir_path (this might be normal on Windows)"
+    # Set permissions - try different approaches
+    chmod -R 755 "$dir_path" 2>/dev/null || true
+    
+    # Set ownership - try multiple user/group combinations
+    if command -v chown >/dev/null 2>&1; then
+        # Try common Pulsar container user IDs
+        chown -R 10000:10000 "$dir_path" 2>/dev/null || \
+        chown -R 1000:1000 "$dir_path" 2>/dev/null || \
+        chown -R $(id -u):$(id -g) "$dir_path" 2>/dev/null || \
+        sudo chown -R 10000:10000 "$dir_path" 2>/dev/null || \
+        sudo chown -R 1000:1000 "$dir_path" 2>/dev/null || {
+            echo "Warning: Could not set ownership for $dir_path"
         }
     fi
     
-    # Try to set ownership (this will work on Linux, might fail on Windows/macOS)
-    if command -v chown >/dev/null 2>&1; then
-        # Try different user IDs that Pulsar containers might use
-        chown -R 10000:10000 "$dir_path" 2>/dev/null || \
-        chown -R 1000:1000 "$dir_path" 2>/dev/null || \
-        chown -R $(id -u):$(id -g) "$dir_path" 2>/dev/null || {
-            echo "Warning: Could not set ownership for $dir_path (this might be normal on Windows)"
-        }
-    fi
+    # Make directories world-writable as fallback
+    chmod -R 777 "$dir_path" 2>/dev/null || true
+    
+    echo "✓ Directory setup completed: $dir_path"
+    ls -la "$dir_path" 2>/dev/null || true
 }
 
-echo "1. Creating required data directories..."
+echo "1. Creating required data directories with proper permissions..."
 
-# Create ZooKeeper data directory
+# Create data directories
 create_directory "data/zookeeper"
-
-# Create BookKeeper data directory
 create_directory "data/bookkeeper"
-
-# Create logs directory (optional, for better organization)
 create_directory "logs"
 
 echo ""
@@ -59,7 +65,7 @@ echo "2. Checking Docker and Docker Compose..."
 # Check if Docker is running
 if ! docker info >/dev/null 2>&1; then
     echo "❌ Error: Docker is not running or not installed."
-    echo "Please make sure Docker Desktop is running and try again."
+    echo "Please make sure Docker is running and try again."
     exit 1
 fi
 echo "✓ Docker is running"
@@ -109,6 +115,8 @@ check_service_health() {
             return 0
         elif docker ps --filter "name=$service_name" --filter "health=unhealthy" --format "{{.Names}}" | grep -q "$service_name"; then
             echo " ❌ (unhealthy)"
+            echo "Checking $service_name logs:"
+            docker logs "$service_name" --tail 20
             return 1
         fi
         
@@ -118,6 +126,8 @@ check_service_health() {
     done
     
     echo " ⏰ (timeout)"
+    echo "Checking $service_name logs:"
+    docker logs "$service_name" --tail 20
     return 1
 }
 
@@ -126,8 +136,16 @@ if check_service_health "zookeeper"; then
     echo "ZooKeeper is healthy"
 else
     echo "❌ ZooKeeper failed to start properly"
-    echo "Checking ZooKeeper logs:"
-    docker logs zookeeper --tail 20
+    echo ""
+    echo "Troubleshooting information:"
+    echo "Host data directory permissions:"
+    ls -la data/zookeeper/ 2>/dev/null || echo "Cannot access data/zookeeper/"
+    echo ""
+    echo "Container data directory permissions:"
+    docker exec zookeeper ls -la /pulsar/data/zookeeper/ 2>/dev/null || echo "Cannot access container directory"
+    echo ""
+    echo "ZooKeeper container logs:"
+    docker logs zookeeper --tail 50
     exit 1
 fi
 
