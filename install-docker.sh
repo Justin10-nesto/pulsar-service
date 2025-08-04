@@ -1,114 +1,54 @@
-networks:
-  pulsar:
-    driver: bridge
-services:
-  # Start zookeeper
-  zookeeper:
-    image: apachepulsar/pulsar:latest
-    container_name: zookeeper
-    restart: on-failure
-    networks:
-      - pulsar
-    volumes:
-      - ./data/zookeeper:/pulsar/data/zookeeper
-    environment:
-      - metadataStoreUrl=zk:zookeeper:2181
-      - PULSAR_MEM=-Xms256m -Xmx256m -XX:MaxDirectMemorySize=256m
-    command:
-      - bash
-      - -c
-      - |
-        bin/apply-config-from-env.py conf/zookeeper.conf && \
-        bin/generate-zookeeper-config.sh conf/zookeeper.conf && \
-        exec bin/pulsar zookeeper
-    healthcheck:
-      test: ["CMD", "bin/pulsar-zookeeper-ruok.sh"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
+#!/bin/bash
 
-  # Init cluster metadata
-  pulsar-init:
-    container_name: pulsar-init
-    hostname: pulsar-init
-    image: apachepulsar/pulsar:latest
-    networks:
-      - pulsar
-    command:
-      - bash
-      - -c
-      - |
-        bin/pulsar initialize-cluster-metadata \
-        --cluster cluster-a \
-        --zookeeper zookeeper:2181 \
-        --configuration-store zookeeper:2181 \
-        --web-service-url http://broker:8080 \
-        --broker-service-url pulsar://broker:6650
-    depends_on:
-      zookeeper:
-        condition: service_healthy
+set -e  # Exit on any error
 
-  # Start bookie
-  bookie:
-    image: apachepulsar/pulsar:latest
-    container_name: bookie
-    restart: on-failure
-    networks:
-      - pulsar
-    environment:
-      - clusterName=${PULSAR_CLUSTER_NAME:-cluster-a}
-      - zkServers=zookeeper:2181
-      - metadataServiceUri=metadata-store:zk:zookeeper:2181
-      - advertisedAddress=bookie
-      - BOOKIE_MEM=-Xms512m -Xmx512m -XX:MaxDirectMemorySize=256m
-    depends_on:
-      zookeeper:
-        condition: service_healthy
-      pulsar-init:
-        condition: service_completed_successfully
-    volumes:
-      - ./data/bookkeeper:/pulsar/data/bookkeeper
-    command: bash -c "bin/apply-config-from-env.py conf/bookkeeper.conf && exec bin/pulsar bookie"
+echo "=== Docker Installation Script for Windows ==="
+echo "This script will help you install Docker Desktop on Windows"
+echo ""
 
-  # Start broker
-  broker:
-    image: apachepulsar/pulsar:latest
-    container_name: broker
-    hostname: broker
-    restart: on-failure
-    networks:
-      - pulsar
-    environment:
-      - metadataStoreUrl=zk:zookeeper:2181
-      - zookeeperServers=zookeeper:2181
-      - clusterName=${PULSAR_CLUSTER_NAME:-cluster-a}
-      - managedLedgerDefaultEnsembleSize=1
-      - managedLedgerDefaultWriteQuorum=1
-      - managedLedgerDefaultAckQuorum=1
-      - advertisedAddress=broker
-      - advertisedListeners=external:pulsar://broker:6650
-      - PULSAR_MEM=-Xms512m -Xmx512m -XX:MaxDirectMemorySize=256m
-    depends_on:
-      zookeeper:
-        condition: service_healthy
-      bookie:
-        condition: service_started
-    ports:
-      - "6650:6650"
-      - "8080:8080"
-    command: bash -c "bin/apply-config-from-env.py conf/broker.conf && exec bin/pulsar broker"
+# Check if running on Windows
+if [[ "$OSTYPE" != "msys" && "$OSTYPE" != "cygwin" && "$OSTYPE" != "win32" ]]; then
+    echo "❌ This script is designed for Windows. For other operating systems, please refer to Docker's official documentation."
+    exit 1
+fi
 
-  pulsar-manager:
-    image: apachepulsar/pulsar-manager:v0.3.0
-    container_name: pulsar-manager
-    restart: on-failure
-    networks:
-      - pulsar
-    environment:
-      SPRING_CONFIGURATION_FILE: /pulsar-manager/pulsar-manager/application.properties
-      PULSAR_MANAGER_USER: "pulsar"
-      PULSAR_MANAGER_PASSWORD: "pulsar"
-    ports:
-      - "9527:9527"
-    depends_on:
-      - broker
+# Check if Docker is already installed
+if command -v docker >/dev/null 2>&1; then
+    echo "✓ Docker is already installed:"
+    docker --version
+    
+    if docker info >/dev/null 2>&1; then
+        echo "✓ Docker is running"
+    else
+        echo "⚠️  Docker is installed but not running. Please start Docker Desktop."
+    fi
+    
+    echo ""
+    echo "To run the Pulsar service, execute:"
+    echo "  ./run-service.sh"
+    exit 0
+fi
+
+echo "Docker is not installed. Please follow these steps to install Docker Desktop:"
+echo ""
+echo "1. Download Docker Desktop for Windows:"
+echo "   https://desktop.docker.com/win/stable/Docker%20Desktop%20Installer.exe"
+echo ""
+echo "2. Run the installer and follow the installation wizard"
+echo ""
+echo "3. After installation, restart your computer if prompted"
+echo ""
+echo "4. Start Docker Desktop from the Start menu"
+echo ""
+echo "5. Wait for Docker to start (you'll see the Docker whale icon in the system tray)"
+echo ""
+echo "6. Open a new terminal and run this script again to verify the installation"
+echo ""
+echo "System Requirements:"
+echo "- Windows 10 64-bit: Pro, Enterprise, or Education (Build 15063 or later)"
+echo "- Windows 11 64-bit: Home or Pro version 21H2 or higher"
+echo "- WSL 2 feature enabled"
+echo "- Virtualization enabled in BIOS"
+echo ""
+echo "For manual installation steps, visit:"
+echo "https://docs.docker.com/desktop/install/windows-install/"
