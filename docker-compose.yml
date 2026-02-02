@@ -108,8 +108,11 @@ services:
       - managedLedgerDefaultEnsembleSize=1
       - managedLedgerDefaultWriteQuorum=1
       - managedLedgerDefaultAckQuorum=1
-      - advertisedAddress=${PULSAR_BROKER_IP}
-      - advertisedListeners=external:pulsar://${PULSAR_BROKER_IP}:6650
+      - advertisedAddress=${PULSAR_BROKER_IP:-broker}
+      - brokerServiceUrl=pulsar://broker:6650
+      - webServiceUrl=http://broker:8080
+      - advertisedListeners=external:pulsar://${PULSAR_BROKER_IP:-shared.safaripro.net}:6650
+      - internalListenerName=internal
       - PULSAR_MEM=-Xms1g -Xmx1g -XX:MaxDirectMemorySize=512m
     depends_on:
       zookeeper:
